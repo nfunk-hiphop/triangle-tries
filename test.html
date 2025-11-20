@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Camera Feed Pattern Converter</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 0;
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+        }
+        .controls {
+            position: absolute;
+            top: 210px;
+            left: 10px;
+            background-color: rgba(255, 255, 255, 0.9);
+            padding: 15px;
+            border-radius: 5px;
+            z-index: 100;
+        }
+        .control-item {
+            margin: 10px 0;
+        }
+        #video {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            width: 320px;
+            height: 180px;
+            border: 2px solid white;
+            border-radius: 5px;
+            z-index: 50;
+        }
+        #output {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div class="controls">
+        <div class="control-item">
+            <label for="resolution-slider">Anzahl Dreiecke: </label>
+            <input type="range" id="resolution-slider" min="10" max="100" value="40">
+            <span id="resolution-value">40</span>
+        </div>
+        <div class="control-item">
+            <label for="color-picker">Dreieck Farbe: </label>
+            <input type="color" id="color-picker" value="#0000ff">
+        </div>
+    </div>
+
+    <video id="video" autoplay></video>
+    <svg id="output" xmlns="http://www.w3.org/2000/svg"></svg>
+    
+    <script>
+        const video = document.getElementById('video');
+        const svg = document.getElementById('output');
+        const resolutionSlider = document.getElementById('resolution-slider');
+        const resolutionValue = document.getElementById('resolution-value');
+        const colorPicker = document.getElementById('color-picker');
+        let triangleCount = 40; // Number of triangles horizontally
+        let currentColor = "#0000ff"; // Default color (blue)
+
+        const shapes = [
+            [[0, 0], [1, 1], [-1, 0]], // default |\
+            [[0, 0], [1, 0], [-1, 1]], // red     |/
+            [[0, 0], [1, 0], [ 0, 1]], // green   \|
+            [[1, 0], [0, 1], [-1, 0]]  // blue    /|
+        ];
+
+        // Access the webcam stream
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(stream => {
+                video.srcObject = stream;
+                video.onloadedmetadata = () => {
+                    // Set SVG to full screen
+                    svg.setAttribute('width', window.innerWidth);
+                    svg.setAttribute('height', window.innerHeight);
+                    svg.setAttribute('viewBox', `0 0 ${window.innerWidth} ${window.innerHeight}`);
+                };
+            })
+            .catch(err => {
+                console.error('Error accessing webcam: ', err);
+            });
+
+        // Function to capture video frame and process it
+        function processFrame() {
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            
+            // Use full window dimensions for processing
+            const screenWidth = window.innerWidth;
+            const screenHeight = window.innerHeight;
+            
+            canvas.width = screenWidth;
+            canvas.height = screenHeight;
+            
+            // Draw video scaled to full canvas
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            // Calculate triangle size based on count (triangleCount triangles horizontally)
+            const triangleSize = screenWidth / triangleCount;
+            const verticalCount = Math.ceil(screenHeight / triangleSize);
+
+            // Loop through the pixels in the canvas and generate shapes based on color
+            svg.innerHTML = ''; // Clear previous SVG content
+            for (let i = 0; i < triangleCount; i++) {
+                for (let j = 0; j < verticalCount; j++) {
+                    const x = i * triangleSize;
+                    const y = j * triangleSize;
+                    
+                    // Sample color from center of triangle area
+                    const sampleX = Math.floor(x + triangleSize / 2);
+                    const sampleY = Math.floor(y + triangleSize / 2);
+                    const colorArray = context.getImageData(sampleX, sampleY, 1, 1).data;
+                    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                    let shapeIndex = 0;
+
+                    // Determine the shape based on the dominant color
+                    if (colorArray[0] == colorArray[1] && colorArray[0] == colorArray[2]) shapeIndex = 0;
+                    else if (colorArray[0] > colorArray[1] && colorArray[0] > colorArray[2]) shapeIndex = 1;
+                    else if (colorArray[1] > colorArray[2] && colorArray[1] > colorArray[0]) shapeIndex = 2;
+                    else if (colorArray[2] > colorArray[0] && colorArray[2] > colorArray[1]) shapeIndex = 3;
+
+                    // Draw the triangle with calculated size
+                    const path_d = `M${x + shapes[shapeIndex][0][0] * triangleSize}, ${y + shapes[shapeIndex][0][1] * triangleSize} 
+                                    l ${shapes[shapeIndex][1][0] * triangleSize}, ${shapes[shapeIndex][1][1] * triangleSize} 
+                                    l ${shapes[shapeIndex][2][0] * triangleSize}, ${shapes[shapeIndex][2][1] * triangleSize} Z`;
+
+                    path.setAttribute('d', path_d);
+                    path.setAttribute('fill', currentColor);
+                    svg.appendChild(path);
+                }
+            }
+        }
+
+        // Update triangle count based on the slider value
+        resolutionSlider.addEventListener('input', () => {
+            triangleCount = parseInt(resolutionSlider.value);
+            resolutionValue.textContent = triangleCount;
+        });
+
+        // Update triangle color based on the color picker value
+        colorPicker.addEventListener('input', () => {
+            currentColor = colorPicker.value;
+        });
+
+        // Continuously process the video feed (you can adjust the frame rate here)
+        setInterval(processFrame, 100); // Process every 100ms (10 FPS)
+
+    </script>
+</body>
+</html>
