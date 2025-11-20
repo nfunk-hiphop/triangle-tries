@@ -42,6 +42,10 @@
             width: 100%;
             height: 100%;
         }
+        #layer-toggle {
+            margin-top: 10px;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
@@ -55,6 +59,9 @@
             <label for="color-picker">Dreieck Farbe: </label>
             <input type="color" id="color-picker" value="#0000ff">
         </div>
+        <div class="control-item">
+            <button id="layer-toggle">Toggle Layer</button>
+        </div>
     </div>
 
     <video id="video" autoplay></video>
@@ -66,8 +73,10 @@
         const resolutionSlider = document.getElementById('resolution-slider');
         const resolutionValue = document.getElementById('resolution-value');
         const colorPicker = document.getElementById('color-picker');
+        const layerToggleButton = document.getElementById('layer-toggle');
         let triangleCount = 40; // Number of triangles horizontally
         let currentColor = "#0000ff"; // Default color (blue)
+        let useBrightnessLayer = false; // Toggle between layers
 
         const shapes = [
             [[0, 0], [1, 1], [-1, 0]], // default |\
@@ -91,6 +100,11 @@
                 console.error('Error accessing webcam: ', err);
             });
 
+        // Function to calculate brightness
+        function getBrightness(r, g, b) {
+            return (r + g + b) / 3;
+        }
+
         // Function to capture video frame and process it
         function processFrame() {
             const canvas = document.createElement('canvas');
@@ -110,7 +124,7 @@
             const triangleSize = screenWidth / triangleCount;
             const verticalCount = Math.ceil(screenHeight / triangleSize);
 
-            // Loop through the pixels in the canvas and generate shapes based on color
+            // Loop through the pixels in the canvas and generate shapes based on color or brightness
             svg.innerHTML = ''; // Clear previous SVG content
             for (let i = 0; i < triangleCount; i++) {
                 for (let j = 0; j < verticalCount; j++) {
@@ -121,22 +135,39 @@
                     const sampleX = Math.floor(x + triangleSize / 2);
                     const sampleY = Math.floor(y + triangleSize / 2);
                     const colorArray = context.getImageData(sampleX, sampleY, 1, 1).data;
+                    const r = colorArray[0], g = colorArray[1], b = colorArray[2];
+
                     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
                     let shapeIndex = 0;
 
-                    // Determine the shape based on the dominant color
-                    if (colorArray[0] == colorArray[1] && colorArray[0] == colorArray[2]) shapeIndex = 0;
-                    else if (colorArray[0] > colorArray[1] && colorArray[0] > colorArray[2]) shapeIndex = 1;
-                    else if (colorArray[1] > colorArray[2] && colorArray[1] > colorArray[0]) shapeIndex = 2;
-                    else if (colorArray[2] > colorArray[0] && colorArray[2] > colorArray[1]) shapeIndex = 3;
+                    // Determine the shape based on the RGB color or brightness
+                    if (useBrightnessLayer) {
+                        const brightness = getBrightness(r, g, b);
+                        if (brightness < 128) {
+                            // Less than 50% brightness: no rotation
+                            path.setAttribute('fill', currentColor);
+                            path.setAttribute('d', `M${x},${y} l${triangleSize},0 l-${triangleSize},${triangleSize} Z`);
+                        } else {
+                            // More than 50% brightness: 180-degree rotation
+                            path.setAttribute('fill', currentColor);
+                            path.setAttribute('d', `M${x},${y} l${triangleSize},0 l-${triangleSize},-${triangleSize} Z`);
+                        }
+                    } else {
+                        // Use the original RGB-based color logic
+                        if (r === g && r === b) shapeIndex = 0;
+                        else if (r > g && r > b) shapeIndex = 1;
+                        else if (g > b && g > r) shapeIndex = 2;
+                        else if (b > r && b > g) shapeIndex = 3;
 
-                    // Draw the triangle with calculated size
-                    const path_d = `M${x + shapes[shapeIndex][0][0] * triangleSize}, ${y + shapes[shapeIndex][0][1] * triangleSize} 
-                                    l ${shapes[shapeIndex][1][0] * triangleSize}, ${shapes[shapeIndex][1][1] * triangleSize} 
-                                    l ${shapes[shapeIndex][2][0] * triangleSize}, ${shapes[shapeIndex][2][1] * triangleSize} Z`;
+                        // Draw the triangle with calculated size
+                        const path_d = `M${x + shapes[shapeIndex][0][0] * triangleSize}, ${y + shapes[shapeIndex][0][1] * triangleSize} 
+                                        l ${shapes[shapeIndex][1][0] * triangleSize}, ${shapes[shapeIndex][1][1] * triangleSize} 
+                                        l ${shapes[shapeIndex][2][0] * triangleSize}, ${shapes[shapeIndex][2][1] * triangleSize} Z`;
 
-                    path.setAttribute('d', path_d);
-                    path.setAttribute('fill', currentColor);
+                        path.setAttribute('d', path_d);
+                        path.setAttribute('fill', currentColor);
+                    }
+
                     svg.appendChild(path);
                 }
             }
@@ -151,6 +182,12 @@
         // Update triangle color based on the color picker value
         colorPicker.addEventListener('input', () => {
             currentColor = colorPicker.value;
+        });
+
+        // Toggle between layers (RGB-based or brightness-based)
+        layerToggleButton.addEventListener('click', () => {
+            useBrightnessLayer = !useBrightnessLayer;
+            layerToggleButton.textContent = useBrightnessLayer ? 'Use RGB Layer' : 'Use Brightness Layer';
         });
 
         // Continuously process the video feed (you can adjust the frame rate here)
